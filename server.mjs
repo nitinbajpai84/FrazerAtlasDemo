@@ -83,7 +83,7 @@ async function handleGemini(req, res) {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: Buffer.concat(chunks),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(30_000),
       },
     );
     res.writeHead(upstream.status, {

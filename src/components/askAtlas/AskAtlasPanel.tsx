@@ -31,6 +31,7 @@ function AskAtlasPanel({
   const [run, setRun] = useState<AgentRun | null>(null);
   const [trace, setTrace] = useState<AgentStep[]>([]);
   const [pending, setPending] = useState<string | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const [sourceResponseId, setSourceResponseId] = useState<string | null>(null);
   const [highlightedSource, setHighlightedSource] = useState<number | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -50,18 +51,28 @@ function AskAtlasPanel({
     async (question: string) => {
       const token = (runToken.current += 1);
       setPending(question);
+      setAnswerError(null);
+      setRun(null);
       setTrace([]);
       setSourcesOpen(false);
-      const result = await askAtlas(question, history.current, (steps) => {
-        if (runToken.current === token) setTrace(steps);
-      });
-      if (runToken.current !== token) return;
-      history.current = [...history.current, { q: question, a: result.response.shortAnswer }].slice(-4);
-      setRun(result);
-      setTrace(result.trace);
-      setPending(null);
-      touch(); // refresh the audit log and any open hub
-      window.requestAnimationFrame(() => answerRef.current?.focus());
+      try {
+        const result = await askAtlas(question, history.current, (steps) => {
+          if (runToken.current === token) setTrace(steps);
+        });
+        if (runToken.current !== token) return;
+        history.current = [...history.current, { q: question, a: result.response.shortAnswer }].slice(-4);
+        setRun(result);
+        setTrace(result.trace);
+        touch(); // refresh the audit log and any open hub
+        window.requestAnimationFrame(() => answerRef.current?.focus());
+      } catch (error) {
+        if (runToken.current !== token) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setAnswerError(message);
+        setTrace((current) => [...current, { ok: false, title: 'Answer could not be completed', detail: message }]);
+      } finally {
+        if (runToken.current === token) setPending(null);
+      }
     },
     [touch],
   );
@@ -188,17 +199,24 @@ function AskAtlasPanel({
           {pending ? (
             <div className="atlas-empty-state">
               <MessageSquareText size={24} aria-hidden="true" />
-              <p>Working on: {pending}</p>
+              <p>{trace.some((step) => step.title.includes(' → '))
+                ? 'Evidence gathered. Drafting a grounded answer for: ' + pending
+                : 'Working on: ' + pending}</p>
             </div>
           ) : run && response ? (
             <ChatMessage
               response={response}
               trace={run.trace}
-              badge={run.mode === 'gemini' ? 'Live AI · grounded' : run.mode === 'blocked' ? 'Blocked' : 'Offline planner'}
+              badge={run.mode === 'gemini' ? 'Live AI · grounded' : run.mode === 'blocked' ? 'Blocked' : run.mode === 'error' ? 'Offline fallback · grounded' : 'Offline planner'}
               note={run.note}
               onViewSource={openSources}
               onSelectQuestion={onSelectQuestion}
             />
+          ) : answerError ? (
+            <div className="atlas-empty-state atlas-answer-error" role="alert">
+              <MessageSquareText size={24} aria-hidden="true" />
+              <div><strong>AskAtlas could not finish this answer.</strong><p>{answerError} You can submit the question again.</p></div>
+            </div>
           ) : (
             <div className="atlas-empty-state">
               <MessageSquareText size={24} aria-hidden="true" />

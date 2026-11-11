@@ -205,55 +205,43 @@ function toResponse(question: string, draft: Draft, sources: SourceRecord[], che
   };
 }
 
-async function runGemini(question: string, history: { q: string; a: string }[], call: ReturnType<typeof executor>): Promise<Draft> {
-  const contents: any[] = [];
-  history.slice(-2).forEach((h) => {
-    contents.push({ role: 'user', parts: [{ text: h.q }] });
-    contents.push({ role: 'model', parts: [{ text: h.a }] });
+async function runGemini(
+  question: string,
+  history: { q: string; a: string }[],
+  groundedDraft: Draft,
+  sources: SourceRecord[],
+): Promise<Draft> {
+  const reply = await fetch('/api/atlas/generate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: 'You are AskAtlas, a Finance answer writer. The approved tools have already gathered the evidence for this question. Do not request or invent additional data. Return the final answer by calling present_answer exactly once. Use only facts in the evidence, keep source refs exactly as supplied, and state when the evidence is insufficient. All data is synthetic; amounts are SGD million unless stated. Keep the short answer to one sentence, detailed answer to at most two sentences, include up to five key drivers and four metrics, and suggest two relevant follow-up questions.' }],
+      },
+      contents: [{
+        role: 'user',
+        parts: [{ text: JSON.stringify({
+          question,
+          recentConversation: history.slice(-2),
+          evidenceBackedStartingDraft: groundedDraft,
+          approvedToolEvidence: sources.map(({ ref, tool, agent, data }) => ({ ref, tool, agent, data })),
+        }) }],
+      }],
+      tools: [{ functionDeclarations: [presentAnswer] }],
+      toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['present_answer'] } },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+    }),
+    signal: AbortSignal.timeout(28_000),
   });
-  contents.push({ role: 'user', parts: [{ text: question }] });
+  const body = await reply.json().catch(() => ({}));
+  if (!reply.ok) throw new Error(body?.error?.message ?? `Gemini request failed (${reply.status})`);
 
-  const functionDeclarations = [
-    ...TOOLS.map((t) => ({ name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) })),
-    presentAnswer,
-  ];
-
-  for (let round = 0; round < 6; round += 1) {
-    const reply = await fetch('/api/atlas/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt() }] },
-        contents,
-        tools: [{ functionDeclarations }],
-        generationConfig: { temperature: 0.2 },
-      }),
-    });
-    const body = await reply.json().catch(() => ({}));
-    if (!reply.ok) throw new Error(body?.error?.message ?? `Gemini request failed (${reply.status})`);
-
-    const content = body?.candidates?.[0]?.content;
-    const parts: any[] = content?.parts ?? [];
-    if (!parts.length) throw new Error(`Gemini returned no content (${body?.candidates?.[0]?.finishReason ?? 'unknown'})`);
-    contents.push(content); // keep the model turn as returned (preserves thought signatures)
-
-    const calls = parts.filter((p) => p.functionCall);
-    if (!calls.length) {
-      const text = parts.map((p) => p.text ?? '').join(' ').trim();
-      return { shortAnswer: text || 'No answer was produced.', keyDrivers: [] };
-    }
-
-    const final = calls.find((p) => p.functionCall.name === 'present_answer');
-    if (final) return final.functionCall.args as Draft;
-
-    contents.push({
-      role: 'user',
-      parts: calls.map((p) => ({
-        functionResponse: { name: p.functionCall.name, response: call(p.functionCall.name, p.functionCall.args ?? {}) },
-      })),
-    });
+  const parts: any[] = body?.candidates?.[0]?.content?.parts ?? [];
+  const final = parts.find((part) => part.functionCall?.name === 'present_answer');
+  if (!final?.functionCall?.args?.shortAnswer) {
+    throw new Error(`Gemini returned no structured answer (${body?.candidates?.[0]?.finishReason ?? 'unknown'})`);
   }
-  throw new Error('The agent did not finish within the allowed number of tool rounds');
+  return final.functionCall.args as Draft;
 }
 
 // Offline planner: fixed plans per topic, executed through the same tools.
@@ -403,7 +391,7 @@ export async function askAtlas(
   trace.push({
     ok: true,
     title: 'Supervisory Finance Agent',
-    detail: status.live ? `Planning with ${status.model}` : 'Offline planner (no Gemini key configured)',
+    detail: status.live ? `Gemini answer writer ready · ${status.model}` : 'Offline planner (no Gemini key configured)',
   });
   audit('Question', question);
   push();
@@ -411,17 +399,19 @@ export async function askAtlas(
   const call = executor(trace, sources, push);
   let draft: Draft;
   let mode: AgentRun['mode'] = status.live ? 'gemini' : 'scripted';
-  let note = status.live ? `Live answer from ${status.model}, grounded on the tool results` : 'Offline answer built from the same tools. Add GEMINI_API_KEY to .env.local for live AI.';
+  let note = status.live ? `Gemini is writing from the approved tool evidence (${status.model}).` : 'Offline answer built from the same approved tools.';
 
   try {
-    draft = status.live ? await runGemini(question, history, call) : runScripted(question, call);
+    const groundedDraft = runScripted(question, call);
+    draft = status.live ? await runGemini(question, history, groundedDraft, sources) : groundedDraft;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    trace.push({ ok: false, title: 'Gemini call failed', detail: message });
-    sources.length = 0;
+    trace.push({ ok: false, title: status.live ? 'Gemini draft failed' : 'Answer planner failed', detail: message });
     draft = runScripted(question, call);
     mode = 'error';
-    note = `Gemini call failed (${message}). Showing the offline answer built from the same tools.`;
+    note = status.live
+      ? `Gemini could not finish (${message}). Showing the grounded offline answer instead.`
+      : `The answer planner reported an error (${message}). Showing its available fallback answer.`;
   }
 
   const check = sources.length ? verify(draft, sources) : null;
