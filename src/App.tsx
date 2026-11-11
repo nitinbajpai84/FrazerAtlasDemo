@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppShell from './components/layout/AppShell';
 import Administration from './pages/Administration';
 import AskAtlasPage from './pages/AskAtlasPage';
+import DataExplorer from './pages/DataExplorer';
 import DeveloperHub from './pages/DeveloperHub';
 import HowAtlasWorks from './pages/HowAtlasWorks';
 import { EngineProvider } from './engine/store';
@@ -24,6 +25,7 @@ function App() {
           <Route path="manager" element={<ManagerHub />} />
           <Route path="treasury" element={<TreasuryHub />} />
           <Route path="ask-atlas" element={<AskAtlasPage />} />
+          <Route path="data-explorer" element={<DataExplorer />} />
           <Route path="reports" element={<Reports />} />
           <Route path="administration" element={<Administration />} />
           <Route path="how-it-works" element={<HowAtlasWorks />} />

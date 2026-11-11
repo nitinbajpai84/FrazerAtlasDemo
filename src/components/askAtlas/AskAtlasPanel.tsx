@@ -193,6 +193,7 @@ function AskAtlasPanel({
           ) : run && response ? (
             <ChatMessage
               response={response}
+              trace={run.trace}
               badge={run.mode === 'gemini' ? 'Live AI · grounded' : run.mode === 'blocked' ? 'Blocked' : 'Offline planner'}
               note={run.note}
               onViewSource={openSources}

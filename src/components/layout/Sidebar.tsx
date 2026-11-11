@@ -3,6 +3,7 @@ import {
   Building2,
   ChartNoAxesCombined,
   ChevronRight,
+  Database,
   FileText,
   HardHat,
   Landmark,
@@ -50,6 +51,11 @@ const navigationItems = [
     to: '/ask-atlas',
     label: 'AskAtlas',
     icon: MessageSquareText,
+  },
+  {
+    to: '/data-explorer',
+    label: 'Data Explorer',
+    icon: Database,
   },
   {
     to: '/reports',

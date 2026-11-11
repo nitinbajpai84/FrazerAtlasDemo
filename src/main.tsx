@@ -11,6 +11,7 @@ import './styles/reporting.css';
 import './styles/previews.css';
 import './styles/responsive.css';
 import './styles/engine.css';
+import './styles/dataExplorer.css';
 
 const rootElement = document.getElementById('root');
 
