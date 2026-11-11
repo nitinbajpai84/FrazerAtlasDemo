@@ -1,0 +1,93 @@
+.shared-hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: -6px 0 24px;
+}
+
+.shared-hub-actions > p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.shared-hub-actions > button {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 1280px) {
+  .workspace-main--shared-atlas-open {
+    padding-right: 480px;
+  }
+
+  .workspace-main--shared-atlas-open .page-context {
+    display: none;
+  }
+
+  .workspace-main--shared-atlas-open .shared-hub-actions > p {
+    display: none;
+  }
+
+  .workspace-main--shared-atlas-open .preview-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-main--shared-atlas-open .report-library-grid,
+  .workspace-main--shared-atlas-open .governance-control-grid,
+  .workspace-main--shared-atlas-open .extracted-fields-grid,
+  .workspace-main--shared-atlas-open .validation-evidence-grid,
+  .workspace-main--shared-atlas-open .report-output-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-main--shared-atlas-open .portfolio-impact-metrics,
+  .workspace-main--shared-atlas-open .approval-state-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-main--shared-atlas-open .valuation-record-summary {
+    flex-direction: column;
+  }
+
+  .workspace-main--shared-atlas-open .valuation-record-summary dl {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .workspace-main--shared-atlas-open .investor-toolbar,
+  .workspace-main--shared-atlas-open .report-generation-start {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .workspace-main--shared-atlas-open .validation-input-row {
+    flex-wrap: wrap;
+  }
+
+  .workspace-main--shared-atlas-open .validation-input-row input {
+    flex-basis: 100%;
+  }
+
+  .workspace-main--shared-atlas-open .upload-actions {
+    flex-direction: column;
+  }
+
+  .workspace-main--shared-atlas-open .report-paper {
+    padding: 18px;
+  }
+
+  .workspace-main--shared-atlas-open .processing-document-name strong {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 599px) {
+  .shared-hub-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

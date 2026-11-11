@@ -1,0 +1,442 @@
+.executive-refresh {
+  container-name: executive;
+  container-type: inline-size;
+}
+
+.executive-refresh .page-header {
+  margin-bottom: 22px;
+}
+
+.executive-refresh .executive-page-actions {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.executive-period-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.executive-period-pill {
+  padding: 5px 9px;
+  border: 1px solid var(--color-grey-light);
+  border-radius: 5px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.executive-refresh .kpi-grid {
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.executive-refresh .kpi-card--visual {
+  padding: 18px;
+}
+
+.visual-kpi-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.visual-kpi-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-orange);
+  place-items: center;
+}
+
+.executive-refresh .visual-kpi-heading h2 {
+  min-height: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.visual-kpi-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.executive-refresh .visual-kpi-body .kpi-value {
+  margin: 0;
+  font-size: 29px;
+}
+
+.kpi-sparkline {
+  display: block;
+  flex: 0 0 auto;
+  width: 76px;
+  height: 36px;
+}
+
+.executive-refresh .kpi-change {
+  min-height: 39px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.visual-kpi-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+}
+
+.visual-kpi-footer .kpi-period {
+  font-size: 11px;
+}
+
+.executive-refresh .executive-layout {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.executive-refresh .executive-main,
+.executive-refresh .executive-chart-grid {
+  gap: 20px;
+}
+
+.executive-refresh .executive-chart-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.executive-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  min-width: 0;
+}
+
+.executive-refresh .panel-header {
+  padding: 19px 20px 16px;
+}
+
+.executive-refresh .panel-header h2 {
+  font-size: 16px;
+}
+
+.executive-refresh .panel-subtitle {
+  font-size: 12px;
+}
+
+.executive-refresh .metric-tabs {
+  gap: 0;
+  margin-right: 20px;
+  margin-left: 20px;
+}
+
+.executive-refresh .metric-tab {
+  padding-right: 9px;
+  padding-left: 9px;
+  font-size: 12px;
+}
+
+.executive-refresh .performance-chart {
+  height: 250px;
+}
+
+.chart-investigate-row {
+  padding: 0 24px 18px;
+}
+
+.chart-investigate-row .text-action {
+  margin-top: 0;
+}
+
+.executive-refresh .bridge-plot {
+  height: 180px;
+}
+
+.executive-refresh .bridge-column--selected {
+  box-shadow: inset 0 -3px 0 var(--color-orange);
+}
+
+.executive-refresh .bridge-label {
+  font-size: 12px;
+}
+
+.executive-refresh .variance-detail {
+  min-height: 106px;
+  margin-top: 10px;
+}
+
+.executive-refresh .variance-detail--selected {
+  border-left: 3px solid var(--color-orange);
+}
+
+.executive-refresh .schedule-note {
+  margin-top: 12px;
+  font-size: 11px;
+}
+
+.visual-business-table {
+  min-width: 520px;
+}
+
+.executive-refresh .visual-business-table th,
+.executive-refresh .visual-business-table td {
+  padding: 13px 18px;
+}
+
+.visual-business-table th:first-child {
+  min-width: 145px;
+}
+
+.business-revenue-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.business-revenue-track {
+  display: block;
+  width: 95px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--color-background);
+}
+
+.business-revenue-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-orange);
+}
+
+.business-table-note {
+  margin: 14px 20px 18px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.executive-refresh .executive-insights {
+  grid-template-columns: minmax(0, 1fr);
+  padding-right: 20px;
+  padding-left: 20px;
+}
+
+.executive-refresh .executive-insight {
+  gap: 10px;
+  padding: 13px 0;
+}
+
+.executive-refresh .executive-insight h3 {
+  margin-bottom: 5px;
+}
+
+.executive-refresh .executive-insight p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.executive-refresh .insights-review-note {
+  margin-right: 20px;
+  margin-left: 20px;
+}
+
+.executive-refresh .questions-header {
+  padding: 20px;
+}
+
+.executive-refresh .executive-question {
+  padding: 19px 20px;
+}
+
+.executive-refresh .executive-question ul {
+  gap: 7px;
+}
+
+.executive-refresh .question-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.executive-refresh .executive-question:nth-child(odd) {
+  border-right: 1px solid var(--color-border);
+}
+
+.executive-refresh .transformation-banner {
+  margin-top: 20px;
+  padding: 20px 24px;
+}
+
+.executive-refresh .executive-data-note {
+  margin-top: 14px;
+}
+
+/* Layout follows actual workspace width, including when AskAtlas is open. */
+@container executive (min-width: 800px) {
+  .executive-refresh .executive-chart-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@container executive (min-width: 1050px) {
+  .executive-detail-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+}
+
+@container executive (min-width: 1240px) {
+  .executive-refresh .executive-layout {
+    grid-template-columns: minmax(0, 1fr) 250px;
+  }
+
+  .executive-refresh .question-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .executive-refresh .executive-question:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .executive-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .executive-refresh.executive-workspace--atlas-open .executive-layout,
+  .executive-refresh.executive-workspace--atlas-open .executive-chart-grid,
+  .executive-refresh.executive-workspace--atlas-open .executive-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .executive-refresh.executive-workspace--atlas-open .executive-period-context {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .executive-refresh .visual-kpi-body .kpi-value {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 599px) {
+  .executive-refresh .page-header {
+    margin-bottom: 18px;
+  }
+
+  .executive-refresh .executive-page-actions {
+    align-items: stretch;
+  }
+
+  .executive-period-context {
+    font-size: 11px;
+  }
+
+  .executive-refresh .kpi-card--visual {
+    padding: 15px;
+  }
+
+  .visual-kpi-heading {
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 38px;
+    margin-bottom: 10px;
+  }
+
+  .visual-kpi-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .visual-kpi-icon > svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .executive-refresh .visual-kpi-heading h2 {
+    font-size: 12px;
+  }
+
+  .executive-refresh .visual-kpi-body .kpi-value {
+    font-size: 25px;
+  }
+
+  .kpi-sparkline {
+    width: 64px;
+    height: 28px;
+  }
+
+  .executive-refresh .kpi-change {
+    min-height: 54px;
+    font-size: 12px;
+  }
+
+  .visual-kpi-footer > span:last-child {
+    display: none;
+  }
+
+  .executive-refresh .panel-header {
+    padding: 18px 16px 14px;
+  }
+
+  .executive-refresh .performance-chart {
+    height: 230px;
+  }
+
+  .executive-refresh .metric-tabs {
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+
+  .executive-refresh .metric-tab {
+    padding-right: 7px;
+    padding-left: 7px;
+    font-size: 12px;
+  }
+
+  .executive-refresh .question-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .executive-refresh .executive-question:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .executive-refresh .transformation-banner {
+    padding: 20px;
+  }
+
+  .chart-investigate-row {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+}
+
+@media (max-width: 359px) {
+  .executive-refresh .kpi-change {
+    min-height: 0;
+  }
+}
