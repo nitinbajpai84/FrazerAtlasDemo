@@ -1,8 +1,48 @@
 // Shared synthetic dataset. Every hub, recommendation and agent tool reads from here,
-// so numbers reconcile across the demo. In the target architecture this is BigQuery.
+// so numbers reconcile across the demo. It is local in-memory demo data, not BigQuery.
 import type { HubName } from '../types';
 
 export const FY = [2022, 2023, 2024, 2025, 2026];
+
+// Five-year business-unit series. Every year reconciles exactly to GROUP revenue
+// and operating profit; all values are illustrative synthetic SGD millions.
+const BU_SERIES = [
+  { id: 'COM', name: 'Commercial', revenue: [1590, 1710, 1850, 1963, 2100], op: [330, 350, 390, 440, 520], planOp: [320, 355, 380, 430, 500], plan: [1560, 1680, 1820, 1940, 2050] },
+  { id: 'RET', name: 'Retail', revenue: [910, 1000, 1095, 1190, 1250], op: [195, 220, 250, 300, 310], planOp: [190, 215, 245, 290, 315], plan: [900, 980, 1075, 1180, 1270] },
+  { id: 'IND', name: 'Industrial & Logistics', revenue: [680, 740, 840, 925, 980], op: [80, 95, 115, 140, 180], planOp: [78, 90, 112, 135, 170], plan: [670, 725, 820, 920, 970] },
+  { id: 'HOS', name: 'Hospitality', revenue: [400, 430, 470, 519, 540], op: [60, 70, 85, 105, 110], planOp: [62, 68, 82, 100, 115], plan: [410, 425, 460, 510, 555] },
+  { id: 'RES', name: 'Residential development', revenue: [260, 280, 300, 303, 330], op: [110, 115, 120, 150, 70], planOp: [105, 112, 118, 140, 110], plan: [240, 270, 290, 310, 320] },
+  { id: 'CORP', name: 'Corporate & others', revenue: [60, 90, 65, 6, 0], op: [-15, -25, -40, -116, -90], planOp: [-20, -25, -38, -100, -95], plan: [45, 120, 35, -50, -65] },
+];
+export const BU_HISTORY = FY.flatMap((year, index) => BU_SERIES.map((unit) => ({
+  fiscal_year: year, id: unit.id, business_unit: unit.name,
+  revenue_sgd_m: unit.revenue[index], operating_profit_sgd_m: unit.op[index], plan_revenue_sgd_m: unit.plan[index], plan_operating_profit_sgd_m: unit.planOp[index],
+})));
+export const businessUnitsForYear = (year: number) => BU_HISTORY.filter((row) => row.fiscal_year === year);
+
+// FY2026 by quarter, SGD million. Each business unit's four quarters sum to its FY2026 total.
+// Residential development's Q2 dip is the Skyline Quarter cost recognition (see DOC-Q2-DEV).
+const QUARTER_SERIES: Record<string, { revenue: number[]; op: number[]; planOp: number[] }> = {
+  COM: { revenue: [515, 520, 525, 540], op: [125, 128, 131, 136], planOp: [125, 125, 125, 125] },
+  RET: { revenue: [305, 310, 312, 323], op: [79, 76, 77, 78], planOp: [78, 79, 79, 79] },
+  IND: { revenue: [238, 242, 246, 254], op: [42, 44, 46, 48], planOp: [42, 42, 43, 43] },
+  HOS: { revenue: [125, 140, 130, 145], op: [24, 30, 26, 30], planOp: [27, 30, 28, 30] },
+  RES: { revenue: [70, 60, 95, 105], op: [30, -5, 20, 25], planOp: [28, 27, 27, 28] },
+  CORP: { revenue: [0, 0, 0, 0], op: [-22, -23, -22, -23], planOp: [-24, -24, -24, -23] },
+};
+export const QUARTERLY = Object.entries(QUARTER_SERIES).flatMap(([id, q]) =>
+  q.revenue.map((revenue, i) => ({ id, quarter: `Q${i + 1} FY2026`, revenue, op: q.op[i], planOp: q.planOp[i] })),
+);
+
+// FY2027 budget by business unit, SGD million, with the main assumption behind each line.
+export const BUDGET_FY2027 = [
+  { id: 'COM', revenue: 2200, op: 545, assumption: 'Occupancy held at 95% or above; Halcyon Tech downsizing re-let by Q3 FY2027' },
+  { id: 'RET', revenue: 1280, op: 325, assumption: 'Northgate anchor space re-let from Q3 FY2027; Eastfield back to 95% occupancy by Q2' },
+  { id: 'IND', revenue: 1060, op: 200, assumption: 'Positive rental reversion of 6% on renewals; SwiftLog 3PL renews in FY2028' },
+  { id: 'HOS', revenue: 570, op: 120, assumption: 'New energy contract from Q2 lowers cost; RevPAR up 3%' },
+  { id: 'RES', revenue: 420, op: 95, assumption: 'Skyline Quarter value engineering saves SGD 12M; Lakeside pricing review lifts sales to 32 a month' },
+  { id: 'CORP', revenue: 0, op: -92, assumption: 'Corporate costs flat in real terms' },
+];
 
 // Matches the Executive Hub fixtures (KPI cards and performance charts).
 export const GROUP = {
@@ -31,6 +71,9 @@ export const BU: BusinessUnitRow[] = [
   { id: 'RES', name: 'Residential development', rev25: 303, rev26: 330, op25: 150, op26: 70, plan26: 110 },
   { id: 'CORP', name: 'Corporate & others', rev25: 6, rev26: 0, op25: -116, op26: -90, plan26: -95 },
 ];
+
+// Cost-free local vector-style retrieval and a lightweight entity graph are
+// implemented in semanticSearch.ts. No embeddings API, Postgres or pgvector.
 
 export const ALL_BU = BU.map((b) => b.id);
 export const buName = (id: string) => BU.find((b) => b.id === id)?.name ?? id;
@@ -114,6 +157,65 @@ export const FX: [string, number, number][] = [
   ['SGD', 58, 100], ['AUD', 17, 72], ['THB', 8, 40], ['GBP', 7, 65], ['EUR', 6, 80], ['JPY', 4, 55],
 ];
 
+// Major leases by asset: [asset id, tenant, sector, share of asset income %, expiry FY].
+// Annual rent is derived from the asset's FY2026 revenue (NOI + opex), so it reconciles.
+const leaseRows: [string, string, string, number, number][] = [
+  ['A01', 'Meridian Bank', 'Financial services', 22, 2029],
+  ['A01', 'Halcyon Tech', 'Technology', 14, 2027],
+  ['A01', 'Orion Legal', 'Professional services', 9, 2031],
+  ['A02', 'Pacific Insurance', 'Financial services', 18, 2028],
+  ['A02', 'Novus Consulting', 'Professional services', 12, 2027],
+  ['A03', 'State Government Agency', 'Government', 25, 2032],
+  ['A03', 'Koala Energy', 'Energy', 10, 2028],
+  ['A04', 'Albion Capital', 'Financial services', 18, 2028],
+  ['A04', 'Fenwick Media', 'Media', 11, 2029],
+  ['A05', 'FreshMart Supermarket', 'Grocery', 9, 2030],
+  ['A05', 'CineMax', 'Entertainment', 6, 2027],
+  ['A05', 'StyleHub Fashion', 'Fashion', 5, 2027],
+  ['A06', 'FreshMart Supermarket', 'Grocery', 10, 2029],
+  ['A06', 'Urban Threads', 'Fashion', 7, 2027],
+  ['A07', 'Siam Department Store', 'Department store', 15, 2030],
+  ['A08', 'SwiftLog 3PL', 'Logistics', 40, 2028],
+  ['A08', 'ColdChain Asia', 'Logistics', 25, 2030],
+  ['A09', 'OzRetail Distribution', 'Retail logistics', 45, 2033],
+  ['A10', 'EuroParts', 'Automotive', 55, 2029],
+];
+
+export const LEASES = leaseRows.map(([assetId, tenant, sector, share, expiry]) => ({
+  assetId, tenant, sector, share, expiry,
+}));
+
+// Group cash flow, SGD million. Operating cash flow matches the Executive Hub cash-flow series.
+export const CASH_FLOW = {
+  operating: [580, 690, 640, 790, 860],
+  developmentCapex: [420, 460, 510, 540, 600],
+  enhancementCapex: [90, 110, 120, 140, 150],
+  acquisitions: [300, 0, 450, 250, 180],
+  divestments: [200, 350, 150, 420, 300],
+  dividends: [310, 330, 345, 360, 380],
+};
+
+// ESG by asset: [asset id, certification, energy kWh/m2 FY2025, FY2026, tCO2e FY2025, FY2026].
+const esgRows: [string, string, number, number, number, number][] = [
+  ['A01', 'Green Mark Platinum', 152, 144, 9800, 9200],
+  ['A02', 'Green Mark GoldPlus', 168, 165, 6100, 6000],
+  ['A03', 'NABERS 5.5 star', 140, 136, 5200, 5000],
+  ['A04', 'BREEAM Very Good', 175, 171, 3900, 3800],
+  ['A05', 'Green Mark Gold', 255, 262, 11800, 12300],
+  ['A06', 'None', 270, 268, 7600, 7500],
+  ['A07', 'None', 290, 284, 6900, 6700],
+  ['A08', 'Green Mark Platinum', 60, 55, 2100, 1900],
+  ['A09', 'NABERS 6 star', 48, 44, 1800, 1650],
+  ['A10', 'DGNB Gold', 52, 50, 1500, 1450],
+  ['A11', 'None', 310, 335, 9300, 10100],
+  ['A12', 'None', 295, 318, 5200, 5600],
+  ['A13', 'NABERS 4 star', 240, 236, 3600, 3550],
+];
+
+export const ESG = esgRows.map(([assetId, cert, energy25, energy26, carbon25, carbon26]) => ({
+  assetId, cert, energy25, energy26, carbon25, carbon26,
+}));
+
 export interface AtlasDoc {
   id: string;
   scope: string; // BU id, 'TSY' or 'GRP'
@@ -131,6 +233,14 @@ const baseDocs: AtlasDoc[] = [
   { id: 'DOC-PROG-PD', scope: 'RES', title: 'Programme report: Parkview Central', date: '05 Sep 2026', text: 'Completion forecast moves from Q1 FY2028 to Q2 FY2028 (three months) because of a delayed authority permit for the basement works. Prolongation cost of SGD 15M is already in the forecast.' },
   { id: 'DOC-HOS-OPS', scope: 'HOS', title: 'Hospitality operations review, FY2026', date: '08 Oct 2026', text: 'Operating costs rose 12% at Sentosa Bay Resort and 15% at Kyoto Garden Hotel, driven by energy contracts repriced in January 2026 and agency labour during refurbishment. RevPAR grew 4%, so NOI margin narrowed. A new energy contract tender is planned for Q2 FY2027.' },
   { id: 'DOC-TSY-POL', scope: 'TSY', title: 'Group Treasury Policy', date: 'Approved FY2025', text: 'No more than 25% of total debt should mature in any single financial year. At least 70% of debt should be fixed-rate or hedged. Refinancing of maturing facilities should be launched at least 12 months before maturity. Liquidity (cash plus undrawn committed facilities) should cover at least 1.5 times the debt maturing in the next 12 months. Covenants: net gearing not above 80%; interest cover not below 2.0 times.' },
+  { id: 'DOC-CREDIT-COM', scope: 'COM', title: 'Tenant credit watchlist: Commercial', date: '15 Oct 2026', text: 'Halcyon Tech (Marina Quay Tower, 14% of asset income, lease expires FY2027) has given notice that it intends to downsize by half at expiry after a funding round fell through. Credit rating moved to watch. Leasing has started early marketing of two floors. Novus Consulting at Orchard Gate Offices (expiry FY2027) is expected to renew.' },
+  { id: 'DOC-CREDIT-RET', scope: 'RET', title: 'Tenant credit watchlist: Retail', date: '15 Oct 2026', text: 'StyleHub Fashion (Northgate Mall, lease expires FY2027) is 60 days in arrears on SGD 0.9M of rent; a payment plan is under negotiation and the security deposit covers three months. Urban Threads at Eastfield Plaza has asked for a rent-to-sales lease at renewal. FreshMart Supermarket remains a strong anchor at both malls.' },
+  { id: 'DOC-ESG-FY26', scope: 'GRP', title: 'Sustainability report highlights, FY2026', date: '30 Sep 2026', text: 'Targets: 80% of portfolio value green-certified by FY2030, and energy intensity 30% below FY2022 by FY2030. Logistics and commercial assets improved, helped by rooftop solar at Jurong Logistics Hub and Western Sydney Distribution Park. Energy intensity rose at Sentosa Bay Resort and Kyoto Garden Hotel during refurbishment works, and at Northgate Mall because of the anchor-space refit. Certification is planned for Eastfield Plaza and Chao Phraya Galleria in FY2027.' },
+  { id: 'DOC-CAPMAN', scope: 'TSY', title: 'Capital management plan, FY2027', date: 'Approved Aug 2026', text: 'Dividends should be covered at least 1.5 times by free cash flow (operating cash flow less asset-enhancement capex). FY2027 capital expenditure plan is SGD 820M, mostly development. Target divestments of SGD 500M in FY2027 to recycle capital into logistics, prioritising non-core secondary offices such as Thames Court. Green-bond proceeds are reserved for certified assets.' },
+  { id: 'DOC-Q2-DEV', scope: 'RES', title: 'Q2 FY2026 development cost note', date: '14 Feb 2026', text: 'Residential development recorded an operating loss of SGD 5M in Q2 FY2026 against a plan profit of SGD 27M. Most of the gap is SGD 30M of additional cost recognised on Skyline Quarter for piling redesign and structural steel, plus slower Lakeside Gardens settlements. Recovery actions: value engineering on the facade and re-tendering the steel package.' },
+  { id: 'DOC-BUDGET-27', scope: 'GRP', title: 'FY2027 budget assumptions', date: 'Approved Oct 2026', text: 'The FY2027 budget targets Group revenue of SGD 5,530M and operating profit of SGD 1,193M. Key assumptions: commercial occupancy held at 95% or above, the Northgate Mall anchor space re-let from Q3, logistics rental reversion of 6%, a lower hotel energy contract from Q2, and Skyline Quarter value engineering. The main downside risks are slower residential sales and higher refinancing costs on FY2028 maturities.' },
+  { id: 'DOC-MARKET-Q4', scope: 'GRP', title: 'Market outlook, Q4 FY2026', date: '20 Oct 2026', text: 'Singapore prime office rents are expected to rise 2-3% in FY2027 on limited new supply. Secondary London office yields may widen a further 10-25bp. Logistics demand in Singapore and Sydney remains strong, with vacancy below 2%. Retail footfall is recovering but fashion tenants remain under pressure. Interest-rate markets price about 50bp of cuts over 12 months, though the timing is uncertain.' },
+  { id: 'DOC-HOS-CAPEX', scope: 'HOS', title: 'Hospitality refurbishment programme', date: '02 Jul 2026', text: 'Sentosa Bay Resort is refurbishing 180 rooms in two phases ending Q1 FY2027, with about 15% of rooms out of service during works. Kyoto Garden Hotel lobby and F&B refurbishment completes in Q4 FY2026. Agency labour costs will fall once works complete, and occupancy is expected to return to above 82% in FY2027.' },
   { id: 'DOC-FIN-MAT', scope: 'GRP', title: 'Finance materiality guideline', date: 'Approved FY2025', text: 'A variance is material when it exceeds 5% of plan or SGD 20M at business-unit level. Material variances require commentary with source evidence. AI-generated analysis that feeds external reporting or valuation requires explicit human approval.' },
 ];
 
@@ -148,6 +258,11 @@ export const METRICS: [string, string, string, string, string, string][] = [
   ['cost_to_complete', 'Cost-to-complete', 'Forecast remaining cost to finish a development', 'forecast_cost - incurred_cost', 'Development Finance', 'curated.dev_projects'],
   ['net_gearing', 'Net gearing', 'Net debt over total equity', '(debt - cash) / equity', 'Group Treasury', 'curated.tsy_debt'],
   ['interest_cover', 'Interest cover', 'Operating profit over annual interest cost', 'operating_profit / interest', 'Group Treasury', 'curated.tsy_debt'],
+  ['wale', 'Weighted average lease expiry', 'Rent-weighted years remaining on major leases', 'SUM(rent * years_to_expiry) / SUM(rent)', 'Asset Management', 'curated.lease_schedule'],
+  ['free_cash_flow', 'Free cash flow', 'Operating cash flow less asset-enhancement capex', 'operating_cash_flow - enhancement_capex', 'Group Finance', 'curated.fin_cash_flow'],
+  ['dividend_cover', 'Dividend cover', 'Free cash flow over dividends paid', 'free_cash_flow / dividends', 'Group Finance', 'curated.fin_cash_flow'],
+  ['budget_vs_actual', 'Budget against actual', 'FY2027 budget compared with FY2026 actual by business unit', 'budget_fy2027 - actual_fy2026', 'Group Finance', 'curated.fin_budget'],
+  ['energy_intensity', 'Energy intensity', 'Energy use per square metre of floor area', 'kwh / floor_area_m2', 'Sustainability', 'curated.esg_assets'],
 ];
 
 export type RoleKey = 'cfo' | 'retail' | 'treasurer';
@@ -169,8 +284,8 @@ export const ROLES: Record<RoleKey, AtlasRole> = {
 
 export const AGENTS: [string, string, string][] = [
   ['Supervisory Finance Agent', 'Plans the work, picks specialists, checks evidence, writes the answer', 'present_answer'],
-  ['Finance Analysis Agent', 'Group and business-unit performance, variance drivers', 'get_metric, explain_variance'],
-  ['Asset & Fund Agent / Valuation Agent', 'Asset valuation, occupancy, NOI, fund returns', 'get_assets'],
+  ['Finance Analysis Agent', 'Group and business-unit performance, five-year trends, variance drivers, cash flow', 'get_metric, explain_variance, get_business_unit_history, get_quarterly_performance, get_budget, get_cash_flow'],
+  ['Asset & Fund Agent / Valuation Agent', 'Asset valuation, occupancy, NOI, fund returns, leases and tenants, ESG', 'get_assets, get_leases, get_esg'],
   ['Development Agent', 'Project cost, sales, programme and margin', 'get_developments'],
   ['Treasury Agent', 'Liquidity, maturities, exposure, covenants, rate scenarios', 'get_treasury_position, run_rate_scenario'],
   ['Document Intelligence Agent', 'Retrieves passages from approved documents the user may see', 'search_documents'],

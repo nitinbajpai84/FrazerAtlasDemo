@@ -2,9 +2,10 @@
 // Tools are the only way an agent can read data. Each one applies the signed-in role's access.
 import type { HubName, Recommendation } from '../types';
 import {
-  ALL_BU, ASSETS, BU, DOCS, FUNDS, FY, GROUP, PROJECTS, TSY,
+  ALL_BU, ASSETS, BU, BU_HISTORY, BUDGET_FY2027, CASH_FLOW, DOCS, ESG, FUNDS, FY, GROUP, LEASES, PROJECTS, QUARTERLY, TSY,
   buName, pct, portfolioValue, r1, role, sum, treasury, visibleAssets,
 } from './data';
+import { searchLocalDocuments } from './semanticSearch';
 
 export interface AtlasTool {
   name: string;
@@ -193,28 +194,209 @@ export const TOOLS: AtlasTool[] = [
     },
   },
   {
+    name: 'get_business_unit_history',
+    agent: 'Finance Analysis Agent',
+    description:
+      'Returns FY2022-FY2026 revenue, operating profit and plan operating profit for each business unit the user may see, with five-year growth (CAGR) and the best and worst year against plan. Use for trend, history and multi-year questions. Optional business_unit filter.',
+    parameters: { type: 'OBJECT', properties: { business_unit: { type: 'STRING' } } },
+    run(input) {
+      const filter = String(input.business_unit ?? '').toLowerCase().slice(0, 5);
+      const units = BU.filter((b) => role().bus.includes(b.id) && (!filter || b.name.toLowerCase().includes(filter)));
+      const cagr = (first: number, last: number) => (first > 0 && last > 0 ? r1((Math.pow(last / first, 1 / 4) - 1) * 100) : null);
+      return {
+        source: 'curated.fin_performance (five-year history)',
+        row_level_security: scopeLabel(),
+        unit: 'SGD M',
+        business_units: units.map((b) => {
+          const rows = BU_HISTORY.filter((h) => h.id === b.id);
+          const vsPlan = rows.map((h) => ({ fy: `FY${h.fiscal_year}`, vs_plan: h.operating_profit_sgd_m - h.plan_operating_profit_sgd_m }));
+          const sorted = [...vsPlan].sort((x, y) => x.vs_plan - y.vs_plan);
+          return {
+            business_unit: b.name,
+            years: rows.map((h) => ({
+              fy: `FY${h.fiscal_year}`, revenue: h.revenue_sgd_m, operating_profit: h.operating_profit_sgd_m,
+              plan_operating_profit: h.plan_operating_profit_sgd_m, vs_plan: h.operating_profit_sgd_m - h.plan_operating_profit_sgd_m,
+            })),
+            revenue_cagr_pct_fy2022_fy2026: cagr(rows[0].revenue_sgd_m, rows[4].revenue_sgd_m),
+            operating_profit_cagr_pct_fy2022_fy2026: cagr(rows[0].operating_profit_sgd_m, rows[4].operating_profit_sgd_m),
+            worst_year_vs_plan: sorted[0],
+            best_year_vs_plan: sorted[sorted.length - 1],
+          };
+        }),
+      };
+    },
+  },
+  {
+    name: 'get_quarterly_performance',
+    agent: 'Finance Analysis Agent',
+    description:
+      'Returns FY2026 revenue, operating profit and plan operating profit by quarter for each business unit the user may see, with each quarter against plan and the weakest quarter. Use for quarter, Q1-Q4, run-rate and in-year questions.',
+    parameters: { type: 'OBJECT', properties: { business_unit: { type: 'STRING' } } },
+    run(input) {
+      const filter = String(input.business_unit ?? '').toLowerCase().slice(0, 5);
+      const units = BU.filter((b) => role().bus.includes(b.id) && (!filter || b.name.toLowerCase().includes(filter)));
+      const quarters = ['Q1 FY2026', 'Q2 FY2026', 'Q3 FY2026', 'Q4 FY2026'];
+      return {
+        source: 'curated.fin_performance_quarterly',
+        row_level_security: scopeLabel(),
+        unit: 'SGD M',
+        business_units: units.map((b) => {
+          const rows = QUARTERLY.filter((q) => q.id === b.id).map((q) => ({ quarter: q.quarter, revenue: q.revenue, operating_profit: q.op, plan_operating_profit: q.planOp, vs_plan: q.op - q.planOp }));
+          const weakest = [...rows].sort((x, y) => x.vs_plan - y.vs_plan)[0];
+          return { business_unit: b.name, quarters: rows, weakest_quarter_vs_plan: weakest };
+        }),
+        totals_by_quarter: quarters.map((quarter) => {
+          const rows = QUARTERLY.filter((q) => q.quarter === quarter && role().bus.includes(q.id));
+          return { quarter, revenue: sum(rows, (q) => q.revenue), operating_profit: sum(rows, (q) => q.op), plan_operating_profit: sum(rows, (q) => q.planOp) };
+        }),
+      };
+    },
+  },
+  {
+    name: 'get_budget',
+    agent: 'Finance Analysis Agent',
+    description:
+      'Returns the FY2027 budget by business unit (revenue and operating profit) against FY2026 actual, with growth and the key assumption behind each line. Use for budget, outlook, forecast, next-year and target questions.',
+    parameters: { type: 'OBJECT', properties: { business_unit: { type: 'STRING' } } },
+    run(input) {
+      const filter = String(input.business_unit ?? '').toLowerCase().slice(0, 5);
+      const units = BU.filter((b) => role().bus.includes(b.id) && (!filter || b.name.toLowerCase().includes(filter)));
+      const rows = units.map((b) => {
+        const budget = BUDGET_FY2027.find((x) => x.id === b.id)!;
+        return {
+          business_unit: b.name, revenue_fy2026: b.rev26, revenue_budget_fy2027: budget.revenue,
+          operating_profit_fy2026: b.op26, operating_profit_budget_fy2027: budget.op, operating_profit_growth: budget.op - b.op26,
+          key_assumption: budget.assumption,
+        };
+      });
+      return {
+        source: 'curated.fin_budget',
+        row_level_security: scopeLabel(),
+        unit: 'SGD M',
+        total_revenue_budget_fy2027: sum(rows, (r) => r.revenue_budget_fy2027),
+        total_operating_profit_budget_fy2027: sum(rows, (r) => r.operating_profit_budget_fy2027),
+        total_operating_profit_fy2026: sum(rows, (r) => r.operating_profit_fy2026),
+        business_units: rows.sort((a, b) => b.operating_profit_growth - a.operating_profit_growth),
+      };
+    },
+  },
+  {
+    name: 'get_leases',
+    agent: 'Asset & Fund Agent',
+    description:
+      'Returns major tenant leases for assets the user may see: tenant, sector, share of asset income, annual rent and expiry year, plus the lease expiry profile by year, weighted average lease expiry (WALE) and tenant concentration. Use for lease expiry, tenant risk and income concentration questions.',
+    parameters: { type: 'OBJECT', properties: { business_unit: { type: 'STRING' } } },
+    run(input) {
+      if (!role().assets) deny('lease and tenant data');
+      const filter = String(input.business_unit ?? '').toLowerCase().slice(0, 5);
+      const assets = visibleAssets().filter((a) => !filter || buName(a.bu).toLowerCase().includes(filter));
+      const leases = LEASES.flatMap((l) => {
+        const asset = assets.find((a) => a.id === l.assetId);
+        if (!asset) return [];
+        return [{
+          tenant: l.tenant, sector: l.sector, asset: asset.name, business_unit: buName(asset.bu),
+          share_of_asset_income_pct: l.share, annual_rent: r1(((asset.noi26 + asset.opex26) * l.share) / 100), expiry_fy: l.expiry,
+        }];
+      });
+      const totalRent = sum(leases, (l) => l.annual_rent);
+      const expiryYears = [...new Set(leases.map((l) => l.expiry_fy))].sort();
+      const bySector = [...new Set(leases.map((l) => l.sector))].map((sector) => ({
+        sector, annual_rent: r1(sum(leases.filter((l) => l.sector === sector), (l) => l.annual_rent)),
+      })).sort((a, b) => b.annual_rent - a.annual_rent);
+      return {
+        source: 'curated.lease_schedule',
+        row_level_security: fullScope() ? 'all assets' : scopeLabel(),
+        unit: 'SGD M',
+        major_lease_rent_total: r1(totalRent),
+        wale_years_from_fy2026: totalRent ? r1(sum(leases, (l) => l.annual_rent * (l.expiry_fy - 2026)) / totalRent) : 0,
+        expiry_profile: expiryYears.map((fy) => {
+          const rows = leases.filter((l) => l.expiry_fy === fy);
+          return { fy: `FY${fy}`, annual_rent: r1(sum(rows, (l) => l.annual_rent)), share_of_major_lease_rent_pct: r1((sum(rows, (l) => l.annual_rent) / totalRent) * 100), tenants: rows.map((l) => l.tenant) };
+        }),
+        rent_by_sector: bySector,
+        tenants_above_20pct_of_asset_income: leases.filter((l) => l.share_of_asset_income_pct > 20).map((l) => `${l.tenant} (${l.asset}, ${l.share_of_asset_income_pct}%)`),
+        leases: [...leases].sort((a, b) => a.expiry_fy - b.expiry_fy || b.annual_rent - a.annual_rent),
+      };
+    },
+  },
+  {
+    name: 'get_cash_flow',
+    agent: 'Finance Analysis Agent',
+    description:
+      'Returns Group cash flow for FY2022-FY2026: operating cash flow, development and asset-enhancement capex, acquisitions, divestments, dividends, free cash flow and dividend cover. Use for cash generation, capex, dividend and capital recycling questions.',
+    run() {
+      if (!fullScope()) deny('Group cash flow');
+      const c = CASH_FLOW;
+      const years = FY.map((year, i) => {
+        const fcf = c.operating[i] - c.enhancementCapex[i];
+        return {
+          fy: `FY${year}`, operating_cash_flow: c.operating[i], development_capex: c.developmentCapex[i],
+          asset_enhancement_capex: c.enhancementCapex[i], acquisitions: c.acquisitions[i], divestments: c.divestments[i],
+          dividends: c.dividends[i], free_cash_flow: fcf, dividend_cover_times: Math.round((fcf / c.dividends[i]) * 100) / 100,
+          net_capital_recycling: c.divestments[i] - c.acquisitions[i],
+        };
+      });
+      return {
+        source: 'curated.fin_cash_flow',
+        unit: 'SGD M',
+        definitions: 'free cash flow = operating cash flow - asset-enhancement capex; dividend cover = free cash flow / dividends',
+        years,
+        five_year_totals: {
+          operating_cash_flow: sum(c.operating, (x) => x), development_capex: sum(c.developmentCapex, (x) => x),
+          acquisitions: sum(c.acquisitions, (x) => x), divestments: sum(c.divestments, (x) => x), dividends: sum(c.dividends, (x) => x),
+        },
+      };
+    },
+  },
+  {
+    name: 'get_esg',
+    agent: 'Asset & Fund Agent',
+    description:
+      'Returns sustainability data for assets the user may see: green certification, energy intensity (kWh per square metre) and carbon emissions (tCO2e) for FY2025 and FY2026, plus the share of portfolio value that is green-certified. Use for ESG, carbon, energy and certification questions.',
+    parameters: { type: 'OBJECT', properties: { business_unit: { type: 'STRING' } } },
+    run(input) {
+      if (!role().assets) deny('asset ESG data');
+      const filter = String(input.business_unit ?? '').toLowerCase().slice(0, 5);
+      const assets = visibleAssets().filter((a) => !filter || buName(a.bu).toLowerCase().includes(filter));
+      const rows = assets.flatMap((a) => {
+        const e = ESG.find((x) => x.assetId === a.id);
+        if (!e) return [];
+        return [{
+          asset: a.name, business_unit: buName(a.bu), valuation_fy2026: a.v26, certification: e.cert,
+          energy_intensity_fy2025: e.energy25, energy_intensity_fy2026: e.energy26, energy_change_pct: pct(e.energy26, e.energy25),
+          carbon_tco2e_fy2025: e.carbon25, carbon_tco2e_fy2026: e.carbon26, carbon_change_pct: pct(e.carbon26, e.carbon25),
+        }];
+      });
+      const value = sum(rows, (r) => r.valuation_fy2026);
+      const certified = sum(rows.filter((r) => r.certification !== 'None'), (r) => r.valuation_fy2026);
+      return {
+        source: 'curated.esg_assets',
+        row_level_security: fullScope() ? 'all assets' : scopeLabel(),
+        green_certified_share_of_value_pct: value ? r1((certified / value) * 100) : 0,
+        target_green_certified_share_fy2030_pct: 80,
+        total_carbon_tco2e_fy2025: sum(rows, (r) => r.carbon_tco2e_fy2025),
+        total_carbon_tco2e_fy2026: sum(rows, (r) => r.carbon_tco2e_fy2026),
+        uncertified_assets: rows.filter((r) => r.certification === 'None').map((r) => r.asset),
+        assets: rows.sort((a, b) => b.energy_change_pct - a.energy_change_pct),
+      };
+    },
+  },
+  {
     name: 'search_documents',
     agent: 'Document Intelligence Agent',
     description:
       'Searches approved documents the user may see (valuation reports, leasing, board, sales and programme reports, treasury policy, materiality guideline) and returns the most relevant passages with document id, title and date. Use it to explain why a number moved and to quote policy thresholds.',
     parameters: { type: 'OBJECT', properties: { query: { type: 'STRING' } }, required: ['query'] },
     run(input) {
-      const words = String(input.query ?? '').toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
       const allowed = DOCS.filter((d) =>
         d.scope === 'GRP' ? true : d.scope === 'TSY' ? role().treasury : role().bus.includes(d.scope) && (d.scope !== 'RES' || role().dev),
       );
-      const hits = allowed
-        .map((d) => {
-          const text = `${d.title} ${d.text}`.toLowerCase();
-          const title = d.title.toLowerCase();
-          return { d, score: sum(words, (w) => (text.includes(w) ? (title.includes(w) ? 3 : 1) : 0)) };
-        })
-        .filter((h) => h.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
+      const allowedIds = new Set(allowed.map((doc) => doc.id));
+      const hits = searchLocalDocuments(String(input.query ?? ''), 5).filter((hit) => allowedIds.has(hit.document_id));
       return {
-        source: 'document index (permission-aware)',
-        passages: hits.map((h) => ({ document_id: h.d.id, title: h.d.title, date: h.d.date, passage: h.d.text })),
+        source: 'local in-memory TF-IDF vector index (permission-aware; no embeddings or database)',
+        retrieval: { method: 'sparse TF-IDF vectors with finance synonym expansion', candidates: DOCS.length, returned: hits.length },
+        passages: hits,
         ...(hits.length ? {} : { note: 'no permitted document matched' }),
       };
     },

@@ -60,7 +60,7 @@ const HUBS: HubName[] = ['Executive Hub', 'Investor Hub', 'Developer Hub', 'Mana
 
 export const systemPrompt = () => `You are AskAtlas, the supervisory Finance agent in Finance Atlas, a finance-intelligence platform for a real-estate group. All data is synthetic. Amounts are SGD million unless stated. The current year is FY2026 and the comparator is FY2025.
 Signed-in user role: ${role().name}. The data tools already apply this role's row-level security. If a tool returns an error starting "access_denied", say plainly that the role cannot see that data and do not estimate it.
-You coordinate specialist agents by calling their tools: Finance Analysis Agent (get_metric, explain_variance), Asset & Fund Agent (get_assets), Development Agent (get_developments), Treasury Agent (get_treasury_position, run_rate_scenario), Document Intelligence Agent (search_documents).
+You coordinate specialist agents by calling their tools: Finance Analysis Agent (get_metric, explain_variance, get_business_unit_history, get_quarterly_performance, get_budget, get_cash_flow), Asset & Fund Agent (get_assets, get_leases, get_esg), Development Agent (get_developments), Treasury Agent (get_treasury_position, run_rate_scenario), Document Intelligence Agent (search_documents).
 Governed metrics in the semantic layer: ${METRICS.map((m) => `${m[0]} = ${m[2]}`).join('; ')}.
 Rules:
 1. Get every figure from a tool. Never state a number that is not in a tool result.
@@ -229,7 +229,8 @@ async function runGemini(
       }],
       tools: [{ functionDeclarations: [presentAnswer] }],
       toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['present_answer'] } },
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+      // Thinking tokens count toward this cap on current Flash models, so leave room for both.
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
     }),
     signal: AbortSignal.timeout(28_000),
   });
@@ -249,6 +250,129 @@ function runScripted(question: string, call: ReturnType<typeof executor>): Draft
   const s = question.toLowerCase();
   const denied = (r: Record<string, any>): Draft | null =>
     r.error ? { shortAnswer: `Your role cannot see this data, so AskAtlas cannot answer from it (${String(r.error).replace('access_denied: ', '')}).`, keyDrivers: [] } : null;
+
+  if (/esg|carbon|emission|energy|green|sustainab|certif|net zero/.test(s)) {
+    const a = call('get_esg', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    call('search_documents', { query: 'sustainability report targets energy intensity certification' });
+    const worst = a.assets.slice(0, 2);
+    return {
+      shortAnswer: `${a.green_certified_share_of_value_pct}% of portfolio value is green-certified against a target of ${a.target_green_certified_share_fy2030_pct}% by FY2030.`,
+      keyDrivers: [
+        { text: `Carbon emissions moved from ${fmt(a.total_carbon_tco2e_fy2025)} to ${fmt(a.total_carbon_tco2e_fy2026)} tCO2e.`, refs: ['S1'] },
+        ...worst.map((x: any) => ({ text: `${x.asset}: energy intensity up ${x.energy_change_pct}% to ${x.energy_intensity_fy2026} kWh per square metre.`, refs: ['S1', 'S2'] })),
+        { text: `Uncertified assets: ${a.uncertified_assets.join(', ') || 'none'}.`, refs: ['S1'] },
+      ],
+      metrics: [
+        { label: 'Green-certified share', value: `${a.green_certified_share_of_value_pct}%` },
+        { label: 'Carbon FY2026', value: `${fmt(a.total_carbon_tco2e_fy2026)} tCO2e` },
+      ],
+      followUpQuestions: ['Which assets should be certified next to reach the FY2030 target?', 'Why did energy intensity rise at the hotels?'],
+      relevantHub: 'Manager Hub',
+    };
+  }
+
+  if (/cash flow|free cash|capex|capital expenditure|dividend|divest|acquisition|capital recycl/.test(s)) {
+    const a = call('get_cash_flow', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    call('search_documents', { query: 'capital management dividend cover capex divestments' });
+    const y = a.years[a.years.length - 1];
+    const p = a.years[a.years.length - 2];
+    return {
+      shortAnswer: `FY2026 free cash flow was SGD ${fmt(y.free_cash_flow)}M, covering dividends of SGD ${fmt(y.dividends)}M ${y.dividend_cover_times} times.`,
+      keyDrivers: [
+        { text: `Operating cash flow rose from SGD ${fmt(p.operating_cash_flow)}M to SGD ${fmt(y.operating_cash_flow)}M.`, refs: ['S1'] },
+        { text: `Development capex was SGD ${fmt(y.development_capex)}M and asset-enhancement capex SGD ${fmt(y.asset_enhancement_capex)}M.`, refs: ['S1'] },
+        { text: `Divestments of SGD ${fmt(y.divestments)}M against acquisitions of SGD ${fmt(y.acquisitions)}M.`, refs: ['S1'] },
+        { text: 'Policy requires dividend cover of at least 1.5 times.', refs: ['S2'] },
+      ],
+      metrics: [
+        { label: 'Free cash flow FY2026', value: `SGD ${fmt(y.free_cash_flow)}M` },
+        { label: 'Dividend cover', value: `${y.dividend_cover_times}x` },
+      ],
+      followUpQuestions: ['How has dividend cover changed over five years?', 'What is the FY2027 capex and divestment plan?'],
+      relevantHub: 'Treasury & Capital Hub',
+    };
+  }
+
+  if (/\bleases?\b|wale|tenant|expiry profile|lease expir/.test(s)) {
+    const a = call('get_leases', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    call('search_documents', { query: 'tenant credit watchlist lease expiry downsizing arrears' });
+    const near = a.expiry_profile[0];
+    return {
+      shortAnswer: `Major leases have a weighted average expiry of ${a.wale_years_from_fy2026} years, and ${near.share_of_major_lease_rent_pct}% of major-lease rent expires in ${near.fy}.`,
+      keyDrivers: [
+        { text: `${near.fy} expiries: ${near.tenants.join(', ')} (SGD ${near.annual_rent}M a year).`, refs: ['S1'] },
+        { text: `Tenants above 20% of an asset's income: ${a.tenants_above_20pct_of_asset_income.join('; ') || 'none'}.`, refs: ['S1'] },
+        { text: `Largest sector by rent: ${a.rent_by_sector[0]?.sector} (SGD ${a.rent_by_sector[0]?.annual_rent}M).`, refs: ['S1'] },
+      ],
+      metrics: [
+        { label: 'WALE', value: `${a.wale_years_from_fy2026} years` },
+        { label: `${near.fy} expiries`, value: `${near.share_of_major_lease_rent_pct}%` },
+      ],
+      followUpQuestions: ['Which tenants are on the credit watchlist?', 'How concentrated is income in the logistics assets?'],
+      relevantHub: 'Manager Hub',
+    };
+  }
+
+  if (/quarter|\bq[1-4]\b/.test(s.replace(/skyline quarter/g, ''))) {
+    const a = call('get_quarterly_performance', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    call('search_documents', { query: 'Q2 FY2026 development cost note quarter' });
+    const weakest = [...a.business_units].sort((x: any, y: any) => x.weakest_quarter_vs_plan.vs_plan - y.weakest_quarter_vs_plan.vs_plan)[0];
+    const totals = a.totals_by_quarter;
+    return {
+      shortAnswer: `The largest quarterly miss was ${weakest.business_unit} in ${weakest.weakest_quarter_vs_plan.quarter}, at ${weakest.weakest_quarter_vs_plan.vs_plan} against plan.`,
+      keyDrivers: [
+        ...totals.map((q: any) => ({ text: `${q.quarter}: operating profit SGD ${q.operating_profit}M against plan SGD ${q.plan_operating_profit}M.`, refs: ['S1'] })),
+        { text: 'The Q2 shortfall reflects additional Skyline Quarter costs.', refs: ['S2'] },
+      ],
+      metrics: [{ label: `${weakest.business_unit} ${weakest.weakest_quarter_vs_plan.quarter}`, value: `SGD ${weakest.weakest_quarter_vs_plan.operating_profit}M` }],
+      followUpQuestions: ['What recovery actions were agreed after Q2?', 'Which business units beat plan in every quarter?'],
+      relevantHub: 'Executive Hub',
+    };
+  }
+
+  if (/budget|outlook|forecast|next year|fy2027/.test(s)) {
+    const a = call('get_budget', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    call('search_documents', { query: 'FY2027 budget assumptions downside risks' });
+    return {
+      shortAnswer: `The FY2027 budget targets operating profit of SGD ${fmt(a.total_operating_profit_budget_fy2027)}M against SGD ${fmt(a.total_operating_profit_fy2026)}M in FY2026.`,
+      keyDrivers: a.business_units.slice(0, 4).map((u: any) => ({ text: `${u.business_unit}: SGD ${u.operating_profit_budget_fy2027}M budget (${u.operating_profit_growth > 0 ? '+' : ''}${u.operating_profit_growth}); ${u.key_assumption}.`, refs: ['S1'] })),
+      metrics: [
+        { label: 'Budget operating profit FY2027', value: `SGD ${fmt(a.total_operating_profit_budget_fy2027)}M` },
+        { label: 'Budget revenue FY2027', value: `SGD ${fmt(a.total_revenue_budget_fy2027)}M` },
+      ],
+      followUpQuestions: ['What are the main downside risks to the FY2027 budget?', 'Which budget assumptions depend on re-letting?'],
+      relevantHub: 'Executive Hub',
+    };
+  }
+
+  if (/trend|five.?years?|5.?years?|over time|cagr|since fy20|historical|each year|over the last|grown|growth rate|most often|every year/.test(s)) {
+    const a = call('get_business_unit_history', {});
+    const blocked = denied(a);
+    if (blocked) return blocked;
+    const units = [...a.business_units].sort((x: any, y: any) => (y.operating_profit_cagr_pct_fy2022_fy2026 ?? -99) - (x.operating_profit_cagr_pct_fy2022_fy2026 ?? -99));
+    const top = units[0];
+    const low = units.filter((u: any) => u.operating_profit_cagr_pct_fy2022_fy2026 !== null).slice(-1)[0];
+    return {
+      shortAnswer: `${top.business_unit} has the fastest operating-profit growth since FY2022, at ${top.operating_profit_cagr_pct_fy2022_fy2026}% a year.`,
+      keyDrivers: [
+        ...units.slice(0, 3).map((u: any) => ({ text: `${u.business_unit}: revenue growth ${u.revenue_cagr_pct_fy2022_fy2026}% a year, operating profit growth ${u.operating_profit_cagr_pct_fy2022_fy2026}% a year.`, refs: ['S1'] })),
+        { text: `${low.business_unit} is weakest, with its worst year against plan in ${low.worst_year_vs_plan.fy} (${low.worst_year_vs_plan.vs_plan}).`, refs: ['S1'] },
+      ],
+      metrics: [{ label: `${top.business_unit} profit growth`, value: `${top.operating_profit_cagr_pct_fy2022_fy2026}% a year` }],
+      followUpQuestions: ['Which business units missed plan most often?', 'Why did Residential development fall in FY2026?'],
+      relevantHub: 'Executive Hub',
+    };
+  }
 
   if (/\brate|\bbps?\b|interest/.test(s)) {
     const a = call('run_rate_scenario', { shift_bps: Number((s.match(/(\d+)\s*bp/) ?? [0, 100])[1]) });
@@ -318,7 +442,7 @@ function runScripted(question: string, call: ReturnType<typeof executor>): Draft
     };
   }
 
-  if (/occupanc|asset|retail|mall|hospitality|opex|operating cost|valuation|fund|portfolio/.test(s)) {
+  if (/occupanc|asset|retail|mall|hospitality|opex|operating cost|valuation|fund|portfolio|marina quay|orchard gate|southbank|thames court|northgate|eastfield|chao phraya|jurong|western sydney|rhine|sentosa|kyoto|collins street|riverside/.test(s)) {
     const a = call('get_assets', {});
     const blocked = denied(a);
     if (blocked) return blocked;
@@ -362,6 +486,41 @@ function runScripted(question: string, call: ReturnType<typeof executor>): Draft
   };
 }
 
+// Topic map used in live mode, so a question that spans topics gets evidence for each of them.
+const TOPICS: { re: RegExp; tool: string; input: Record<string, unknown> }[] = [
+  { re: /matur|refinanc|liquid|debt|treasury|covenant|hedg|gearing|interest/, tool: 'get_treasury_position', input: {} },
+  { re: /develop|project|margin|cost-to-complete|sales velocity|skyline|lakeside|parkview|verdant|harbour edge/, tool: 'get_developments', input: {} },
+  { re: /\bleases?\b|wale|tenant|expir|anchor/, tool: 'get_leases', input: {} },
+  { re: /cash|capex|capital expenditure|dividend|divest|acqui|recycl|\bsell\b|\bsale\b|dispos/, tool: 'get_cash_flow', input: {} },
+  { re: /esg|carbon|emission|energy|green|sustainab|certif|net zero/, tool: 'get_esg', input: {} },
+  { re: /trend|five.?years?|5.?years?|over time|cagr|since fy20|historical|each year|over the last|grown|growth rate|most often|every year|history|fy2022|fy2023|fy2024/, tool: 'get_business_unit_history', input: {} },
+  { re: /(?<!skyline )quarter|\bq[1-4]\b|run.rate|in-year/, tool: 'get_quarterly_performance', input: {} },
+  { re: /budget|outlook|forecast|next year|fy2027|target/, tool: 'get_budget', input: {} },
+  { re: /occupanc|asset|retail|mall|hospitality|hotel|opex|operating cost|valuation|fund|portfolio|\bnoi\b|marina quay|orchard gate|southbank|thames court|northgate|eastfield|chao phraya|jurong|western sydney|rhine|sentosa|kyoto|collins street|riverside/, tool: 'get_assets', input: {} },
+  { re: /marina quay|orchard gate|southbank|thames court|northgate|eastfield|chao phraya|jurong|western sydney|rhine|sentosa|kyoto|collins street|riverside/, tool: 'get_leases', input: {} },
+  { re: /profit|revenue|variance|plan|performance|business unit|driver/, tool: 'explain_variance', input: { metric: 'operating_profit' } },
+];
+
+// Only call tools this role may use, so the trace shows real gathering rather than refusals.
+function allowed(tool: string) {
+  const who = role();
+  if (tool === 'get_treasury_position' || tool === 'run_rate_scenario') return who.treasury;
+  if (tool === 'get_developments') return who.dev;
+  if (tool === 'get_assets' || tool === 'get_leases' || tool === 'get_esg') return who.assets;
+  if (tool === 'get_cash_flow') return who.bus.length === ALL_BU.length;
+  return true;
+}
+
+function addTopicEvidence(question: string, call: ReturnType<typeof executor>, sources: SourceRecord[]) {
+  const s = question.toLowerCase();
+  const used = new Set(sources.map((x) => x.tool));
+  TOPICS.filter((t) => t.re.test(s) && !used.has(t.tool) && allowed(t.tool) && (used.add(t.tool), true))
+    .slice(0, 4)
+    .forEach((t) => call(t.tool, t.input));
+  // Always retrieve passages for the question as asked, alongside the planner's fixed search.
+  call('search_documents', { query: question });
+}
+
 export async function askAtlas(
   question: string,
   history: { q: string; a: string }[],
@@ -401,17 +560,26 @@ export async function askAtlas(
   let mode: AgentRun['mode'] = status.live ? 'gemini' : 'scripted';
   let note = status.live ? `Gemini is writing from the approved tool evidence (${status.model}).` : 'Offline answer built from the same approved tools.';
 
+  let groundedDraft: Draft | null = null;
   try {
-    const groundedDraft = runScripted(question, call);
-    draft = status.live ? await runGemini(question, history, groundedDraft, sources) : groundedDraft;
+    groundedDraft = runScripted(question, call);
+    if (status.live && sources.length) addTopicEvidence(question, call, sources);
+    // No evidence (for example the role was denied): nothing for Gemini to write from.
+    draft = status.live && sources.length ? await runGemini(question, history, groundedDraft, sources) : groundedDraft;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     trace.push({ ok: false, title: status.live ? 'Gemini draft failed' : 'Answer planner failed', detail: message });
-    draft = runScripted(question, call);
+    // Reuse the evidence already gathered; re-running would call every tool twice.
+    draft = groundedDraft ?? runScripted(question, call);
     mode = 'error';
     note = status.live
       ? `Gemini could not finish (${message}). Showing the grounded offline answer instead.`
       : `The answer planner reported an error (${message}). Showing its available fallback answer.`;
+  }
+
+  if (!sources.length && mode === 'gemini') {
+    mode = 'blocked';
+    note = 'No data this role may see for this question, so nothing was sent to the model.';
   }
 
   const check = sources.length ? verify(draft, sources) : null;

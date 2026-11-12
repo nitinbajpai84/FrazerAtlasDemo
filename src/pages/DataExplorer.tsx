@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import Panel from '../components/common/Panel';
 import PageHeader from '../components/layout/PageHeader';
-import { ASSETS, BU, DEBT, DOCS, FX, FUNDS, FY, GROUP, METRICS, PROJECTS, TSY } from '../engine/data';
+import { ASSETS, BUDGET_FY2027, BU_HISTORY, CASH_FLOW, DEBT, DOCS, ESG, FX, FUNDS, FY, GROUP, LEASES, METRICS, PROJECTS, QUARTERLY, TSY, buName } from '../engine/data';
+import { localKnowledgeGraph } from '../engine/semanticSearch';
 
 type DataRow = Record<string, unknown>;
-type DatasetKey = 'group' | 'business-units' | 'assets' | 'projects' | 'funds' | 'treasury' | 'documents' | 'metrics';
+type DatasetKey = 'group' | 'business-units' | 'quarterly' | 'budget' | 'assets' | 'leases' | 'esg' | 'projects' | 'funds' | 'treasury' | 'cash-flow' | 'documents' | 'metrics' | 'knowledge-graph';
 
 const datasets: { key: DatasetKey; label: string; source: string; sql: string; rows: () => DataRow[] }[] = [
   {
@@ -14,9 +15,9 @@ const datasets: { key: DatasetKey; label: string; source: string; sql: string; r
     rows: () => FY.map((year, i) => ({ fiscal_year: `FY${year}`, revenue_sgd_m: GROUP.revenue[i], operating_profit_sgd_m: GROUP.op[i], nav_sgd_m: GROUP.nav[i], roce_pct: GROUP.roce[i] })),
   },
   {
-    key: 'business-units', label: 'Business units', source: 'BU · src/engine/data.ts',
-    sql: 'SELECT business_unit, revenue_fy2025, revenue_fy2026, operating_profit_fy2025, operating_profit_fy2026, plan_fy2026\nFROM curated.fin_performance\nORDER BY business_unit;',
-    rows: () => BU.map((row) => ({ business_unit: row.name, id: row.id, revenue_fy2025_sgd_m: row.rev25, revenue_fy2026_sgd_m: row.rev26, operating_profit_fy2025_sgd_m: row.op25, operating_profit_fy2026_sgd_m: row.op26, plan_fy2026_sgd_m: row.plan26 })),
+    key: 'business-units', label: 'Business units', source: 'BU_HISTORY · src/engine/data.ts',
+    sql: 'SELECT fiscal_year, business_unit, revenue_sgd_m, operating_profit_sgd_m, plan_revenue_sgd_m, plan_operating_profit_sgd_m\nFROM curated.fin_performance\nORDER BY fiscal_year, business_unit;',
+    rows: () => BU_HISTORY,
   },
   {
     key: 'assets', label: 'Assets', source: 'ASSETS · src/engine/data.ts',
@@ -44,6 +45,31 @@ const datasets: { key: DatasetKey; label: string; source: string; sql: string; r
     ],
   },
   {
+    key: 'quarterly', label: 'FY2026 quarters', source: 'QUARTERLY · src/engine/data.ts',
+    sql: 'SELECT quarter, business_unit, revenue_sgd_m, operating_profit_sgd_m, plan_operating_profit_sgd_m\nFROM curated.fin_performance_quarterly\nWHERE fiscal_year = 2026;',
+    rows: () => QUARTERLY.map((row) => ({ quarter: row.quarter, business_unit: buName(row.id), revenue_sgd_m: row.revenue, operating_profit_sgd_m: row.op, plan_operating_profit_sgd_m: row.planOp })),
+  },
+  {
+    key: 'budget', label: 'FY2027 budget', source: 'BUDGET_FY2027 · src/engine/data.ts',
+    sql: 'SELECT business_unit, budget_revenue_sgd_m, budget_operating_profit_sgd_m, key_assumption\nFROM curated.fin_budget\nWHERE fiscal_year = 2027;',
+    rows: () => BUDGET_FY2027.map((row) => ({ business_unit: buName(row.id), budget_revenue_sgd_m: row.revenue, budget_operating_profit_sgd_m: row.op, key_assumption: row.assumption })),
+  },
+  {
+    key: 'leases', label: 'Leases', source: 'LEASES · src/engine/data.ts',
+    sql: 'SELECT asset_id, tenant, sector, share_of_asset_income_pct, expiry_fy\nFROM curated.lease_schedule\nORDER BY expiry_fy;',
+    rows: () => LEASES.map((row) => ({ asset: ASSETS.find((a) => a.id === row.assetId)?.name ?? row.assetId, tenant: row.tenant, sector: row.sector, share_of_asset_income_pct: row.share, expiry_fy: row.expiry })),
+  },
+  {
+    key: 'esg', label: 'ESG', source: 'ESG · src/engine/data.ts',
+    sql: 'SELECT asset_id, certification, energy_kwh_m2_fy2025, energy_kwh_m2_fy2026, carbon_tco2e_fy2025, carbon_tco2e_fy2026\nFROM curated.esg_assets;',
+    rows: () => ESG.map((row) => ({ asset: ASSETS.find((a) => a.id === row.assetId)?.name ?? row.assetId, certification: row.cert, energy_kwh_m2_fy2025: row.energy25, energy_kwh_m2_fy2026: row.energy26, carbon_tco2e_fy2025: row.carbon25, carbon_tco2e_fy2026: row.carbon26 })),
+  },
+  {
+    key: 'cash-flow', label: 'Cash flow', source: 'CASH_FLOW · src/engine/data.ts',
+    sql: 'SELECT fiscal_year, operating_cash_flow, development_capex, enhancement_capex, acquisitions, divestments, dividends\nFROM curated.fin_cash_flow\nORDER BY fiscal_year;',
+    rows: () => FY.map((year, i) => ({ fiscal_year: `FY${year}`, operating_cash_flow_sgd_m: CASH_FLOW.operating[i], development_capex_sgd_m: CASH_FLOW.developmentCapex[i], enhancement_capex_sgd_m: CASH_FLOW.enhancementCapex[i], acquisitions_sgd_m: CASH_FLOW.acquisitions[i], divestments_sgd_m: CASH_FLOW.divestments[i], dividends_sgd_m: CASH_FLOW.dividends[i] })),
+  },
+  {
     key: 'documents', label: 'Documents', source: 'DOCS · src/engine/data.ts',
     sql: 'SELECT document_id, scope, title, document_date, text\nFROM curated.finance_documents\nORDER BY document_date DESC;',
     rows: () => DOCS.map((row) => ({ id: row.id, scope: row.scope, title: row.title, date: row.date, text: row.text })),
@@ -52,6 +78,11 @@ const datasets: { key: DatasetKey; label: string; source: string; sql: string; r
     key: 'metrics', label: 'Metric definitions', source: 'METRICS · src/engine/data.ts',
     sql: 'SELECT metric_id, display_name, definition, formula, owner, source_table\nFROM semantic.metric_catalog\nORDER BY metric_id;',
     rows: () => METRICS.map(([id, name, definition, formula, owner, source]) => ({ id, metric: name, definition, formula, owner, source_table: source })),
+  },
+  {
+    key: 'knowledge-graph', label: 'Knowledge graph', source: 'Code-defined nodes and edges · src/engine/semanticSearch.ts',
+    sql: 'No SQL query. This demo graph is a local list of metric, owner, business unit, asset, project and document relationships.',
+    rows: () => { const graph = localKnowledgeGraph(); return graph.edges.map((edge, index) => ({ id: index + 1, from: graph.nodes.find((n) => n.id === edge.from)?.label ?? edge.from, relationship: edge.relation, to: graph.nodes.find((n) => n.id === edge.to)?.label ?? edge.to, from_type: graph.nodes.find((n) => n.id === edge.from)?.type, to_type: graph.nodes.find((n) => n.id === edge.to)?.type })); },
   },
 ];
 
@@ -87,7 +118,7 @@ function DataExplorer() {
       <div className="data-explorer-page">
         <div className="data-explorer-notice">
           <strong>Demo dataset · synthetic records</strong>
-          <span>AskAtlas tools read these in-memory TypeScript objects. No SQL engine or live finance database is connected.</span>
+          <span>Five-year synthetic records; AskAtlas reads in-memory TypeScript data. Retrieval is local TF-IDF with no paid embeddings. No SQL engine, live finance database or persistent vector store is connected.</span>
         </div>
 
         <div className="data-explorer-tabs" role="tablist" aria-label="Demo datasets">
@@ -121,8 +152,8 @@ function DataExplorer() {
           </div>
         </Panel>
 
-        <Panel title="Warehouse SQL equivalent" subtitle="Illustrative query only · this demo does not execute SQL">
-          <p className="data-explorer-sql-note">These source names and query shapes show how the same governed data could be queried in a warehouse. The live demo reads the TypeScript dataset listed above.</p>
+        <Panel title="Warehouse SQL equivalent" subtitle={activeKey === 'knowledge-graph' ? 'This graph is in-memory; no SQL is executed' : 'Illustrative query only · this demo does not execute SQL'}>
+          <p className="data-explorer-sql-note">{activeKey === 'knowledge-graph' ? 'Graph relationships are represented as local nodes and edges. Postgres can persist this graph later, but pgvector itself is for vector similarity search and does not create a knowledge graph.' : 'These source names and query shapes show how the same governed data could be queried in a warehouse. The live demo reads the TypeScript dataset listed above.'}</p>
           <pre className="data-explorer-sql"><code>{active.sql}</code></pre>
         </Panel>
       </div>
